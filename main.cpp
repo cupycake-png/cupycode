@@ -67,6 +67,8 @@ int main(){
 	std::vector<std::string> lines = {""};
 	int lineIndex = 0;
 	int colIndex = 0;
+	float scrollX = 0.0f;
+	float scrollY = 0.0f;
 	int keyPauseMs = 100;
 	std::chrono::time_point<std::chrono::system_clock> lastBackspacePress = std::chrono::system_clock::now();
 	std::chrono::time_point<std::chrono::system_clock> backspacePressCheck;
@@ -243,30 +245,46 @@ int main(){
 				}
 			}
 
-			// Draw text
-
-			for(int i=0; i<lines.size(); i++){
-				DrawTextEx(consolaFont, lines[i].c_str(), {0, (float)50*i}, consolaFont.baseSize, 2, WHITE);
-			}
-
-			// Draw cursor
-
 			std::string currentLine = lines[lineIndex];
+
+			std::string textBeforeCursor = currentLine.substr(0, colIndex);
+			Vector2 cursorTextSize = MeasureTextEx(consolaFont, textBeforeCursor.c_str(), consolaFont.baseSize, 2);
+			float cursorXPos = cursorTextSize.x;
+			float cursorYPos = lineIndex * 50;
+
+			Vector2 placeholderSize = MeasureTextEx(consolaFont, " ", consolaFont.baseSize, 2);
+			float cursorWidth = placeholderSize.x;
+			float cursorHeight = placeholderSize.y;
+
+			if(cursorXPos - scrollX > GetScreenWidth() - 20){
+				scrollX = cursorXPos - (GetScreenWidth() - 20);
 			
-			Vector2 charSize = MeasureTextEx(consolaFont, currentLine.c_str(), consolaFont.baseSize, 2);
-
-			int cursorXPos = 0;
-			if(charSize.x == 0 && charSize.y == 0){
-				charSize = MeasureTextEx(consolaFont, "s", consolaFont.baseSize, 2);
-				cursorXPos = 0;
-			}else{
-				cursorXPos = colIndex*(charSize.x/currentLine.length());
+			}else if(cursorXPos - scrollX < 0){
+				scrollX = cursorXPos - 20;
+				
+				if(scrollX < 0){
+					scrollX = 0;
+				}
 			}
-			int cursorYPos = lineIndex*50;
 
-			int cursorWidth = (currentLine.length() == 0) ? charSize.x : charSize.x/currentLine.length();
+			if(cursorYPos - scrollY > GetScreenHeight() - 50){
+				scrollY = cursorYPos - (GetScreenHeight() - 50);
+			
+			}else if(cursorYPos - scrollY < 0){
+				scrollY = cursorYPos;
 
-			DrawRectangle(cursorXPos, cursorYPos, cursorWidth, charSize.y, cursorColour);
+				if(scrollY < 0){
+					scrollY = 0;
+				}
+			}
+
+			DrawRectangle(cursorXPos - scrollX, cursorYPos - scrollY, cursorWidth, cursorHeight, cursorColour);
+
+			for (int i = 0; i < lines.size(); i++) {
+				float yPos = i * 50 - scrollY;
+				Vector2 textPos = {-scrollX, yPos};
+				DrawTextEx(consolaFont, lines[i].c_str(), textPos, consolaFont.baseSize, 2, WHITE);
+			}
 
 			// Draw the status bar
 
