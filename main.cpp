@@ -1,12 +1,12 @@
-#include <stdio.h>
 #include <string>
 #include <vector>
 #include <chrono>
+#include <filesystem>
+
 #include <raylib.h>
+#include <stdio.h>
 
 #include "tinyfiledialogs.h"
-
-// #include "resource_dir.h"
 
 // TODO: Make text font size dynamic
 
@@ -57,13 +57,11 @@ int main(){
 
 	InitWindow(1280, 800, "cupycode");
 
-	// SearchAndSetResourceDir("resources");
-
 	Font consolaFont = LoadFontEx("CONSOLA.TTF", 35, 0, 250);
 
 	SetTargetFPS(30);
 
-	std::string currentFilePath = "UNNAMED";
+	std::string currentFileName = "UNNAMED";
 	std::vector<std::string> lines = {""};
 	int lineIndex = 0;
 	int colIndex = 0;
@@ -89,14 +87,16 @@ int main(){
 			showEditor = true;
 		
 		}else if(IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_O)){
-			char* path = tinyfd_openFileDialog("Select File", nullptr, 0, nullptr, nullptr, 0);
+			char* openFilePath = tinyfd_openFileDialog("Select File", nullptr, 0, nullptr, nullptr, 0);
 
-			if(path != nullptr){
-				char* contents = LoadFileText(path);
+			if(openFilePath != nullptr){
+				std::filesystem::path path(openFilePath);
+
+				currentFileName = path.filename().string();
+
+				char* contents = LoadFileText(openFilePath);
 				std::string fileContents(contents); 
 				UnloadFileText(contents);
-
-				currentFilePath = path;
 
 				lines = stringSplit(fileContents);
 		
@@ -106,18 +106,22 @@ int main(){
 			}
 		
 		}else if(showEditor && IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_S)){
-			char* path;
+			char* saveFilePath;
 			
-			if(currentFilePath == "UNNAMED"){
-				path = tinyfd_saveFileDialog("Save File As", nullptr, 0, nullptr, nullptr);
+			if(currentFileName == "UNNAMED"){
+				saveFilePath = tinyfd_saveFileDialog("Save File As", nullptr, 0, nullptr, nullptr); 
 			}
 
-			if(path != nullptr){
+			if(saveFilePath != nullptr){
+				std::filesystem::path path(saveFilePath);
+
+				currentFileName = path.filename().string();
+
 				std::string content = reconstructSplitString(lines);
 
-				if(!SaveFileText(currentFilePath.c_str(), (char*)content.c_str())){
-					printf("Error saving file %s with content %s\n", currentFilePath, content);
-					// TODO: Implement better way to handle errors
+				if(!SaveFileText(saveFilePath, (char*)content.c_str())){
+					printf("Error saving file %s with content %s\n", path, content);
+					// TODO: Implement better way to handle errors pls
 				}
 			}
 		}
@@ -245,6 +249,8 @@ int main(){
 				}
 			}
 
+			// Draw cursor
+
 			std::string currentLine = lines[lineIndex];
 
 			std::string textBeforeCursor = currentLine.substr(0, colIndex);
@@ -278,18 +284,22 @@ int main(){
 				}
 			}
 
-			DrawRectangle(cursorXPos - scrollX, cursorYPos - scrollY, cursorWidth, cursorHeight, cursorColour);
+			DrawRectangle(cursorXPos - scrollX, cursorYPos - scrollY + 50, cursorWidth, cursorHeight, cursorColour);
+
+			// Draw lines of text
 
 			for (int i = 0; i < lines.size(); i++) {
 				float yPos = i * 50 - scrollY;
-				Vector2 textPos = {-scrollX, yPos};
+				Vector2 textPos = {-scrollX, yPos + 50};
 				DrawTextEx(consolaFont, lines[i].c_str(), textPos, consolaFont.baseSize, 2, WHITE);
 			}
 
-			// Draw the status bar
+			// Draw status bar
 
-			drawTextCentreAligned(currentFilePath.c_str(), {0, 0}, consolaFont, WHITE);
-			
+			DrawRectangle(0, 0, GetScreenWidth(), 50, PURPLE);
+
+			drawTextCentreAligned(currentFileName.c_str(), {0, (float)GetScreenHeight() - 50}, consolaFont, WHITE);
+
 		}else{
 			float menuTextSpacing = GetScreenHeight()/4;
 
