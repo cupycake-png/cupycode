@@ -1,12 +1,18 @@
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+
 #include <string>
 #include <vector>
 #include <chrono>
 #include <filesystem>
 
-#include <raylib.h>
 #include <stdio.h>
+#include <raylib.h>
 
+// TODO: Remove need for tinyfiledialogs.h
 #include "tinyfiledialogs.h"
+#include "json.hpp"
+#include "LanguageServerProcess.h"
 
 // TODO: Make text font size dynamic
 
@@ -61,6 +67,23 @@ int main(){
 
 	SetTargetFPS(30);
 
+	LanguageServerProcess LS;
+
+	// TEMPORARY: Spawning OLS process (really should use settings to detect if using OLS or external LS)
+	if(!LS.start("OLS.exe")){
+		// TODO: Turn into actual error popup
+		printf("[ERR] Failed to start language server\n");
+	}
+
+	std::string initialiseMsg = R"({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "initialize",
+		"params": {"capabilities": {}}
+	})";
+
+	LS.send(initialiseMsg);
+
 	std::string currentFileName = "UNNAMED";
 	std::vector<std::string> lines = {""};
 	int lineIndex = 0;
@@ -68,6 +91,7 @@ int main(){
 	float scrollX = 0.0f;
 	float scrollY = 0.0f;
 	int keyPauseMs = 100;
+	// TODO: Make better system for this plaz... 
 	std::chrono::time_point<std::chrono::system_clock> lastBackspacePress = std::chrono::system_clock::now();
 	std::chrono::time_point<std::chrono::system_clock> backspacePressCheck;
 	std::chrono::time_point<std::chrono::system_clock> lastEnterPress = std::chrono::system_clock::now();
@@ -83,6 +107,9 @@ int main(){
 
 	bool showEditor = false;
 	while(!WindowShouldClose()){
+		std::string response;
+		LS.getNextMessage(response);
+
 		if(IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_N)){
 			showEditor = true;
 		
@@ -303,7 +330,7 @@ int main(){
 		}else{
 			float menuTextSpacing = GetScreenHeight()/4;
 
-			drawTextCentreAligned("Welcome to cupycode!", {0, menuTextSpacing}, consolaFont, WHITE);
+			drawTextCentreAligned("Welcome to CupyCode!", {0, menuTextSpacing}, consolaFont, WHITE);
 			drawTextCentreAligned("CTRL + N to create a new file", {0, 0}, consolaFont, WHITE);
 			drawTextCentreAligned("CTRL + O to open file", {0, -1*menuTextSpacing}, consolaFont, WHITE);
 		}
