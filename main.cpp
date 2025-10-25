@@ -11,8 +11,10 @@
 
 // TODO: Remove need for tinyfiledialogs.h
 #include "tinyfiledialogs.h"
-#include "json.hpp"
 #include "LanguageServerProcess.h"
+#include "LSPTypes.h"
+
+using json = nlohmann::json;
 
 // TODO: Make text font size dynamic
 
@@ -75,14 +77,9 @@ int main(){
 		printf("[ERR] Failed to start language server\n");
 	}
 
-	std::string initialiseMsg = R"({
-		"jsonrpc": "2.0",
-		"id": 1,
-		"method": "initialize",
-		"params": {"capabilities": {}}
-	})";
+	InitialiseRequest initialiseMsg(1);
 
-	LS.send(initialiseMsg);
+	LS.send(initialiseMsg.toJson());
 
 	std::string currentFileName = "UNNAMED";
 	std::vector<std::string> lines = {""};
