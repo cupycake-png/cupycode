@@ -1,13 +1,31 @@
 package main
 
 import (
+	"bufio"
+	"cupycode/lsp"
+	"cupycode/rpc"
+	"encoding/json"
 	"fmt"
+	"log"
+	"net"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+func getLogger(filename string) *log.Logger {
+	logFile, err := os.OpenFile(filename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
+
+	if err != nil {
+		panic("error opening file")
+	}
+
+	return log.New(logFile, "[cupycode] ", 0)
+}
 
 func parseCommandInput(input string) (string, []string) {
 	split := strings.Split(input, " ")
@@ -26,7 +44,7 @@ func renderEditor(editorContent []string, cursorLine int, cursorColumn int) stri
 	var result strings.Builder
 
 	for i, line := range editorContent {
-		coloured := line
+		coloured := tview.Escape(line)
 
 		if i == cursorLine-1 {
 			if cursorColumn-1 >= len(line) {
@@ -49,6 +67,15 @@ func renderEditor(editorContent []string, cursorLine int, cursorColumn int) stri
 	}
 
 	return result.String()
+}
+
+// TODO: Return a bool for error checking
+func sendMessage(connection net.Conn, msg any, logger *log.Logger) {
+	_, err := connection.Write([]byte(rpc.EncodeMessage(msg)))
+
+	if err != nil {
+		logger.Printf("Error writing to connection: %s", err.Error())
+	}
 }
 
 func main() {
@@ -93,6 +120,11 @@ CTRL+Q to exit
 
 	fileName := "cupycode"
 
+	var connection net.Conn
+	var logger *log.Logger
+
+	fileVersion := 0
+
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		// General
 
@@ -135,6 +167,9 @@ CTRL+Q to exit
 
 				line = line[:currentColumn-1] + string(r) + line[currentColumn-1:]
 				editorContent[currentLine-1] = line
+
+				fileVersion++
+				sendMessage(connection, lsp.NewDidChangeTextDocumentNotification(fileName, fileVersion, currentLine, len(editorContent[currentLine-1]), editorContent[currentLine-1]), logger)
 
 				currentColumn++
 			}
@@ -250,11 +285,16 @@ CTRL+Q to exit
 					fileName = path
 
 					editorContent = strings.Split(string(fileContents), "\n")
-					currentLine = len(editorContent)
-					currentColumn = len(editorContent[currentLine-1])
+					currentLine = 1
+					currentColumn = 1
 
 					infoBox.SetText("Successfully opened file " + path)
 					infoBox.SetBorderColor(tcell.ColorGreen)
+
+					split := strings.Split(path, ".")
+					fileExtension := split[len(split)-1]
+
+					sendMessage(connection, lsp.NewDidOpenTextDocumentNotification(path, fileExtension, fileVersion, strings.Join(editorContent, "\n")), logger)
 				}
 
 			case "s", "save", "w", "write":
@@ -294,6 +334,61 @@ CTRL+Q to exit
 
 		return event
 	})
+
+	logger = getLogger("cupycode_logs.txt")
+
+	// Start language server
+
+	cmd := exec.Command("ols")
+	cmd.Start()
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Connect to language server
+	connection, err := net.Dial("tcp", "127.0.0.1:2956")
+
+	if err == nil {
+		defer connection.Close()
+
+		logger.Println("Connected to OLS")
+
+		go func() {
+			for {
+				scanner := bufio.NewScanner(connection)
+				scanner.Split(rpc.Split)
+
+				for scanner.Scan() {
+					msg := scanner.Bytes()
+
+					method, content, err := rpc.DecodeMessage(msg)
+
+					if err != nil {
+						logger.Println("Error decoding message from server")
+					}
+
+					switch method {
+
+					case "textDocument/publishDiagnostics":
+						var notification lsp.PublishDiagnosticsNotification
+
+						if err := json.Unmarshal(content, &notification); err != nil {
+							logger.Printf("Error parsing %s", err.Error())
+						}
+
+						infoBox.SetText(notification.Diagnostics[0].Message)
+						infoBox.SetBorderColor(tcell.ColorRed)
+					}
+				}
+			}
+		}()
+
+		sendMessage(connection, lsp.NewInitialiseRequest(1), logger)
+
+	} else {
+		logger.Printf("Error connecting to language server: %s", err.Error())
+	}
+
+	defer cmd.Process.Kill()
 
 	if err := app.SetRoot(pages, true).EnableMouse(true).Run(); err != nil {
 		panic(err)
